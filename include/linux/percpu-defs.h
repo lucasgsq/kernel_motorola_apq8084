@@ -382,7 +382,7 @@ do {									\
 # define raw_cpu_read(pcp)	__pcpu_size_call_return(raw_cpu_read_, (pcp))
 # define raw_cpu_write(pcp, val)	__pcpu_size_call(raw_cpu_write_, (pcp), (val))
 # define raw_cpu_add(pcp, val)	__pcpu_size_call(raw_cpu_add_, (pcp), (val))
-# define raw_cpu_sub(pcp, val)	raw_cpu_add((pcp), -(val))
+# define raw_cpu_sub(pcp, val)	raw_cpu_add((pcp), -(typeof(pcp))(val))
 # define raw_cpu_inc(pcp)		raw_cpu_add((pcp), 1)
 # define raw_cpu_dec(pcp)		raw_cpu_sub((pcp), 1)
 # define raw_cpu_and(pcp, val)	__pcpu_size_call(raw_cpu_and_, (pcp), (val))
