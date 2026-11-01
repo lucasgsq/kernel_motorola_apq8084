@@ -36,7 +36,6 @@
 #include <asm/current.h>
 #include <asm/syscall.h>
 #include <crypto/hash.h>
-#include <generated/compile.h>
 #include <generated/utsrelease.h>
 #include <linux/aio.h>
 #include <linux/anon_inodes.h>
