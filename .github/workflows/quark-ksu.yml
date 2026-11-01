@@ -1,0 +1,58 @@
+name: Quark KernelSU ARM build
+
+on:
+  push:
+    branches: ['A11+KSU']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quark-ksu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kernel:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev
+      - name: Fetch pinned LineageOS ARM GCC 4.9
+        run: |
+          git init "$RUNNER_TEMP/quark-gcc"
+          git -C "$RUNNER_TEMP/quark-gcc" remote add origin https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git
+          git -C "$RUNNER_TEMP/quark-gcc" fetch --depth=1 origin da10d2bd65e2c57d338fb6bb712ff522ad4e34e7
+          git -C "$RUNNER_TEMP/quark-gcc" checkout --detach FETCH_HEAD
+          echo "CROSS_COMPILE=$RUNNER_TEMP/quark-gcc/bin/arm-linux-androideabi-" >> "$GITHUB_ENV"
+      - name: Configure and compile ARM kernel with KernelSU
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p out ci-artifacts
+          "$CROSS_COMPILE"gcc --version | tee ci-artifacts/compiler.txt
+          git rev-parse HEAD > ci-artifacts/kernel-commit.txt
+          make O=out ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" quark_defconfig 2>&1 | tee ci-artifacts/configure.log
+          grep -qx CONFIG_KSU=y out/.config
+          grep -qx CONFIG_KSU_TAMPER_SYSCALL_TABLE=y out/.config
+          grep -qx CONFIG_KSU_LSM_SECURITY_HOOKS=y out/.config
+          grep -qx CONFIG_KSU_DEBUG=y out/.config
+          cp out/.config ci-artifacts/kernel.config
+          make -j2 O=out ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" zImage-dtb 2>&1 | tee ci-artifacts/build.log
+          cp out/arch/arm/boot/zImage-dtb ci-artifacts/
+          cp out/System.map ci-artifacts/
+          sha256sum ci-artifacts/zImage-dtb > ci-artifacts/SHA256SUMS
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: quark-A11-KSU-${{ github.sha }}
+          path: ci-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
