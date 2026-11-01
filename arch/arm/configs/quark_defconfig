@@ -4245,6 +4245,8 @@ CONFIG_LSM_MMAP_MIN_ADDR=4096
 CONFIG_SECURITY_SELINUX=y
 # CONFIG_SECURITY_SELINUX_BOOTPARAM is not set
 # CONFIG_SECURITY_SELINUX_DISABLE is not set
+# A12+ debug bring-up: retain runtime enforcing/permissive selection.
+# Device BoardConfig passes enforcing=0 androidboot.selinux=permissive for debug builds.
 CONFIG_SECURITY_SELINUX_DEVELOP=y
 CONFIG_SECURITY_SELINUX_AVC_STATS=y
 CONFIG_SECURITY_SELINUX_CHECKREQPROT_VALUE=1
