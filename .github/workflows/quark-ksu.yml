@@ -44,6 +44,9 @@ jobs:
           grep -qx CONFIG_KSU_LSM_SECURITY_HOOKS=y out/.config
           grep -qx CONFIG_KSU_DEBUG=y out/.config
           cp out/.config ci-artifacts/kernel.config
+          make -j2 O=out ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" prepare scripts 2>&1 | tee ci-artifacts/prepare.log
+          make -j2 O=out ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" security/selinux/ 2>&1 | tee ci-artifacts/selinux.log
+          make -j2 O=out ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" drivers/kernelsu/ 2>&1 | tee ci-artifacts/kernelsu.log
           make -j2 O=out ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" zImage-dtb 2>&1 | tee ci-artifacts/build.log
           cp out/arch/arm/boot/zImage-dtb ci-artifacts/
           cp out/System.map ci-artifacts/

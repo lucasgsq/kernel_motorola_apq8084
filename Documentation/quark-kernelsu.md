@@ -41,12 +41,17 @@ Enforcing and inspect dmesg for KernelSU initialization, symbol/LSM discovery
 errors and stack warnings. Retest microphone, camera, P2, Wi-Fi, Bluetooth,
 phone calls and suspend before installing modules.
 
-Install a matching Manager with armeabi-v7a and ARMv7 ksud. The trusted Manager
-certificate is fixed in drivers/kernelsu/Makefile (package me.weishu.kernelsu,
-size 0x033b, SHA-256 c371061b19d8c7d7d6133c6a9bafe198fa944e50c1b31c9d8daa8d7f1fc2d2d6).
-Use the corresponding upstream/fork signed build, or deliberately configure
-your own signing certificate when building Manager. Do not disable signature
-checks. Random APKs and ARM64-only Manager/daemon builds are not compatible.
+The fork's release v3.3.1+36 (driver interface version 32716) contains ARMv7
+ksud and a Manager certificate already accepted by manager/apk_sign.c:
+867 bytes, SHA-256 4359c171f32543394cbc23ef908c4bb94cad7c8087002ba164c8230948c21549.
+The downloaded APK's v2 signature and signed content digest were verified.
+APK SHA-256: 798254823ffcc60c136a8f6ae903bfee6ff4ccd164fffc8ba1a3b749df0f607b.
+Download: https://github.com/backslashxx/KernelSU/releases/tag/v3.3.1%2B36
+
+These are the fork's existing accepted certificates; no signature checks
+were disabled. The Makefile additionally defines the official KernelSU key.
+For a production custom Manager, use your own protected signing key and
+review all accepted keys. Random APKs and ARM64-only builds are unsuitable.
 
 Check for an existing root provider before enabling KernelSU in daily use:
 inspect `command -v su`, active su/Magisk processes and modules. Do not run
