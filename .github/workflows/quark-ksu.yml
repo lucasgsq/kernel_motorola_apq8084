@@ -2,7 +2,7 @@ name: Quark KernelSU ARM build
 
 on:
   push:
-    branches: ['A11+KSU']
+    branches: ['A11\+KSU']
   workflow_dispatch:
 
 permissions:
