@@ -1328,7 +1328,8 @@ static void mxt_input_button(struct mxt_data *data, u8 *message)
 	int i;
 
 	/* do not report events if input device not yet registered */
-	if (!data->enable_reporting)
+	/* Wake gestures must not expose capacitive key events. */
+	if (!data->enable_reporting || atomic_read(&data->suspended))
 		return;
 
 	/* Active-low switch */
@@ -1553,7 +1554,8 @@ static void mxt_proc_t15_messages(struct mxt_data *data, u8 *msg)
 	unsigned long keystates = le32_to_cpu(msg[2]);
 
 	/* do not report events if input device not yet registered */
-	if (!data->enable_reporting)
+	/* Wake gestures must not expose capacitive key events. */
+	if (!data->enable_reporting || atomic_read(&data->suspended))
 		return;
 
 	for (key = 0; key < data->pdata->t15_num_keys; key++) {
@@ -4514,11 +4516,18 @@ static void mxt_reset_slots(struct mxt_data *data)
 	unsigned int num_mt_slots;
 	int id;
 
-	if (data->buttons_enabled)
+	if (!input_dev) {
 		data->t15_keystatus = 0;
-
-	if (!input_dev)
 		return;
+	}
+
+	/* Release held keys before dropping their state on suspend/reset. */
+	for (id = 0; id < data->pdata->t15_num_keys; id++) {
+		if (test_bit(id, &data->t15_keystatus))
+			input_report_key(input_dev,
+					 data->pdata->t15_keymap[id], 0);
+	}
+	data->t15_keystatus = 0;
 
 	num_mt_slots = data->num_touchids + data->num_stylusids;
 
