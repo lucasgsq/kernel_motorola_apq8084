@@ -2851,7 +2851,7 @@ int diag_dci_deinit_client(struct diag_dci_client_tbl *entry)
 
 	token = entry->client_info.token;
 
-	mutex_lock(&driver->dci_mutex);
+	/* Caller holds dci_mutex across client lookup and teardown. */
 	/*
 	 * Remove the entry from the list before freeing the buffers
 	 * to ensure that we don't have any invalid access.
@@ -2869,7 +2869,6 @@ int diag_dci_deinit_client(struct diag_dci_client_tbl *entry)
 		diag_update_userspace_clients(DCI_LOG_MASKS_TYPE);
 	ret = dci_ops_tbl[token].send_log_mask(token);
 	if (ret != DIAG_DCI_NO_ERROR) {
-		mutex_unlock(&driver->dci_mutex);
 		return ret;
 	}
 	kfree(entry->dci_event_mask);
@@ -2878,7 +2877,6 @@ int diag_dci_deinit_client(struct diag_dci_client_tbl *entry)
 		diag_update_userspace_clients(DCI_EVENT_MASKS_TYPE);
 	ret = dci_ops_tbl[token].send_event_mask(token);
 	if (ret != DIAG_DCI_NO_ERROR) {
-		mutex_unlock(&driver->dci_mutex);
 		return ret;
 	}
 
