@@ -220,6 +220,7 @@ extern struct mutex dci_stat_mutex;
 int diag_dci_init(void);
 void diag_dci_exit(void);
 int diag_dci_register_client(struct diag_dci_reg_tbl_t *reg_entry);
+/* Caller must hold driver->dci_mutex across lookup and teardown. */
 int diag_dci_deinit_client(struct diag_dci_client_tbl *entry);
 void diag_update_smd_dci_work_fn(struct work_struct *);
 void diag_dci_notify_client(int peripheral_mask, int data, int proc);
