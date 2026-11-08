@@ -525,11 +525,12 @@ static int max17042_get_property(struct power_supply *psy,
 
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
-		ret = max17042_read_charge_counter(chip->client, 1);
+		/* Report remaining capacity in uAh using RepCap's 500 uAh LSB. */
+		ret = max17042_read_reg(chip->client, MAX17042_RepCap);
 		if (ret < 0)
 			return ret;
 
-		val->intval = ret;
+		val->intval = ret * 500;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
 		ret = max17042_read_temp(chip, &val->intval);
