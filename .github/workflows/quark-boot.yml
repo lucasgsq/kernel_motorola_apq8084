@@ -1,0 +1,134 @@
+name: Quark boot image
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_branch:
+        description: Kernel branch
+        type: choice
+        options: ['A11+KSU', 'A12+']
+        required: true
+      boot_url:
+        description: HTTPS URL of boot.img from the matching Quark ROM
+        required: false
+        type: string
+      boot_sha256:
+        description: SHA-256 of the base boot.img
+        required: false
+        type: string
+
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quark-boot-${{ inputs.kernel_branch }}
+  cancel-in-progress: false
+
+jobs:
+  kernel:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Validate boot image inputs
+        env:
+          BASE_URL: ${{ inputs.boot_url }}
+          BASE_SHA256: ${{ inputs.boot_sha256 }}
+        run: |
+          if [[ -n "$BASE_URL" || -n "$BASE_SHA256" ]]; then
+            [[ "$BASE_URL" == https://* && "$BASE_SHA256" =~ ^[[:xdigit:]]{64}$ ]]
+          fi
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev
+      - name: Fetch pinned LineageOS ARM GCC 4.9
+        run: |
+          git init "$RUNNER_TEMP/quark-gcc"
+          git -C "$RUNNER_TEMP/quark-gcc" remote add origin https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git
+          git -C "$RUNNER_TEMP/quark-gcc" fetch --depth=1 origin da10d2bd65e2c57d338fb6bb712ff522ad4e34e7
+          git -C "$RUNNER_TEMP/quark-gcc" checkout --detach FETCH_HEAD
+          echo "CROSS_COMPILE=$RUNNER_TEMP/quark-gcc/bin/arm-linux-androideabi-" >> "$GITHUB_ENV"
+      - name: Configure and compile Quark ARM kernel
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p out ci-artifacts
+          "$CROSS_COMPILE"gcc --version | tee ci-artifacts/compiler.txt
+          git rev-parse HEAD > ci-artifacts/kernel-commit.txt
+          make O=out ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" quark_defconfig 2>&1 | tee ci-artifacts/configure.log
+          cp out/.config ci-artifacts/kernel.config
+          make -j2 O=out ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" prepare scripts 2>&1 | tee ci-artifacts/prepare.log
+          make -j2 O=out ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" security/selinux/ 2>&1 | tee ci-artifacts/selinux.log
+          make -j2 O=out ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" zImage-dtb 2>&1 | tee ci-artifacts/build.log
+          cp out/arch/arm/boot/zImage-dtb ci-artifacts/
+          cp out/System.map ci-artifacts/
+          sha256sum ci-artifacts/zImage-dtb > ci-artifacts/SHA256SUMS
+      - name: Package boot.img
+        if: ${{ inputs.boot_url != '' }}
+        env:
+          BASE_URL: ${{ inputs.boot_url }}
+          BASE_SHA256: ${{ inputs.boot_sha256 }}
+        run: |
+          [[ "$BASE_SHA256" =~ ^[[:xdigit:]]{64}$ ]]
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --max-time 180 --max-filesize 16777216 --output "$RUNNER_TEMP/base.img" -- "$BASE_URL"
+          printf '%s  %s\n' "${BASE_SHA256,,}" "$RUNNER_TEMP/base.img" | sha256sum --check
+          python3 - "$RUNNER_TEMP/base.img" <<'PY'
+          import hashlib
+          import struct
+          import sys
+          from pathlib import Path
+
+          page = 4096
+          limit = 16 * 1024 * 1024
+          base = Path(sys.argv[1]).read_bytes()
+          kernel = Path("ci-artifacts/zImage-dtb").read_bytes()
+
+          def aligned(size):
+              return (size + page - 1) // page * page
+
+          def padded(data):
+              return data.ljust(aligned(len(data)), b"\0")
+
+          if len(base) < page or base[:8] != b"ANDROID!":
+              sys.exit("Expected an Android boot image.")
+          old_size, _, ramdisk_size, _, second_size, _, _, page_size, version = (
+              struct.unpack_from("<9I", base, 8)
+          )
+          if page_size != page or version != 0 or not old_size or not ramdisk_size:
+              sys.exit("Expected a Quark v0 image with 4096-byte pages and a ramdisk.")
+
+          ramdisk_offset = page + aligned(old_size)
+          second_offset = ramdisk_offset + aligned(ramdisk_size)
+          end = second_offset + aligned(second_size)
+          if len(base) < end or any(base[end:]):
+              sys.exit("Base image is truncated or has an unsupported signature/footer.")
+          if not kernel or page + aligned(len(kernel)) + end - ramdisk_offset > limit:
+              sys.exit("Kernel is empty or boot image would exceed the Quark partition.")
+
+          ramdisk = base[ramdisk_offset:ramdisk_offset + ramdisk_size]
+          second = base[second_offset:second_offset + second_size]
+          digest = hashlib.sha1()
+          for component in (kernel, ramdisk, second):
+              digest.update(component)
+              digest.update(struct.pack("<I", len(component)))
+
+          header = bytearray(base[:page])
+          struct.pack_into("<I", header, 8, len(kernel))
+          header[576:608] = digest.digest().ljust(32, b"\0")
+          image = header + padded(kernel) + padded(ramdisk) + padded(second)
+          Path("ci-artifacts/boot.img").write_bytes(image)
+          PY
+          sha256sum ci-artifacts/boot.img >> ci-artifacts/SHA256SUMS
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: quark-boot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
