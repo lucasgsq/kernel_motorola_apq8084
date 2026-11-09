@@ -9,11 +9,11 @@ on:
         required: true
       boot_url:
         description: HTTPS URL of boot.img from the matching Quark ROM
-        required: true
+        required: false
         type: string
       boot_sha256:
         description: SHA-256 of the base boot.img
-        required: true
+        required: false
         type: string
 
 
@@ -32,7 +32,15 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-          ref: refs/heads/${{ inputs.kernel_branch }}
+          ref: ${{ github.sha }}
+      - name: Validate boot image inputs
+        env:
+          BASE_URL: ${{ inputs.boot_url }}
+          BASE_SHA256: ${{ inputs.boot_sha256 }}
+        run: |
+          if [[ -n "$BASE_URL" || -n "$BASE_SHA256" ]]; then
+            [[ "$BASE_URL" == https://* && "$BASE_SHA256" =~ ^[[:xdigit:]]{64}$ ]]
+          fi
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -60,6 +68,7 @@ jobs:
           cp out/System.map ci-artifacts/
           sha256sum ci-artifacts/zImage-dtb > ci-artifacts/SHA256SUMS
       - name: Package boot.img
+        if: ${{ inputs.boot_url != '' }}
         env:
           BASE_URL: ${{ inputs.boot_url }}
           BASE_SHA256: ${{ inputs.boot_sha256 }}
