@@ -4707,7 +4707,8 @@ int q6asm_stream_cmd(struct audio_client *ac, int cmd, uint32_t stream_id)
 }
 
 static int __q6asm_cmd_nowait(struct audio_client *ac, int cmd,
-			      uint32_t stream_id)
+			      uint32_t stream_id,
+			const void *caller)
 {
 	struct apr_hdr hdr;
 	int rc;
