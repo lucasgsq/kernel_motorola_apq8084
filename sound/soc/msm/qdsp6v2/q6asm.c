@@ -1051,6 +1051,10 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 	if (!(ac) || ((dir != IN) && (dir != OUT)))
 		return -EINVAL;
 
+	/* Keep the product and its page-aligned size representable in int. */
+	if (!bufsz || !bufcnt || bufsz > (INT_MAX - (PAGE_SIZE - 1)) / bufcnt)
+		return -EINVAL;
+
 	pr_debug("%s: session[%d]bufsz[%d]bufcnt[%d]\n",
 			__func__, ac->session,
 			bufsz, bufcnt);
@@ -1063,8 +1067,7 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 		return 0;
 	}
 	mutex_lock(&ac->cmd_lock);
-	buf = kzalloc(((sizeof(struct audio_buffer))*bufcnt),
-			GFP_KERNEL);
+	buf = kcalloc(bufcnt, sizeof(*buf), GFP_KERNEL);
 
 	if (!buf) {
 		mutex_unlock(&ac->cmd_lock);
