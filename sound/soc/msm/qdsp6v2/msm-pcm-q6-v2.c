@@ -620,7 +620,13 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 		if (!ret)
 			pr_err("%s: CMD_EOS failed, cmd_pending 0x%lx\n",
 			       __func__, prtd->cmd_pending);
-		q6asm_cmd(prtd->audio_client, CMD_CLOSE);
+		/* The client can be allocated before a DSP stream is opened. */
+		if (prtd->session_id)
+			q6asm_cmd(prtd->audio_client, CMD_CLOSE);
+		else
+			pr_info("%s: skip DSP close for unprepared PCM (device=%d sid=%u)\n",
+				__func__, substream->pcm->device,
+				prtd->audio_client->session);
 		q6asm_audio_client_buf_free_contiguous(dir,
 					prtd->audio_client);
 		q6asm_audio_client_free(prtd->audio_client);
@@ -727,7 +733,13 @@ static int msm_pcm_capture_close(struct snd_pcm_substream *substream)
 
 	mutex_lock(&pdata->lock);
 	if (prtd->audio_client) {
-		q6asm_cmd(prtd->audio_client, CMD_CLOSE);
+		/* The client can be allocated before a DSP stream is opened. */
+		if (prtd->session_id)
+			q6asm_cmd(prtd->audio_client, CMD_CLOSE);
+		else
+			pr_info("%s: skip DSP close for unprepared PCM (device=%d sid=%u)\n",
+				__func__, substream->pcm->device,
+				prtd->audio_client->session);
 		q6asm_audio_client_buf_free_contiguous(dir,
 				prtd->audio_client);
 		q6asm_audio_client_free(prtd->audio_client);
