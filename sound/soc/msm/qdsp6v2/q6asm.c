@@ -1378,6 +1378,9 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 	}
 	if (data->opcode == APR_BASIC_RSP_RESULT) {
 		token = data->token;
+		if (payload[0] == ASM_STREAM_CMD_CLOSE)
+			pr_info("q6asm close rsp sid=%u token=0x%x status=0x%x\n",
+				ac->session, token, payload[1]);
 		if (payload[1] != 0) {
 			pr_err("%s: cmd = 0x%x returned error = 0x%x\n",
 				__func__, payload[0], payload[1]);
@@ -4589,7 +4592,8 @@ fail_send_param:
 	return rc;
 }
 
-static int __q6asm_cmd(struct audio_client *ac, int cmd, uint32_t stream_id)
+static int __q6asm_cmd(struct audio_client *ac, int cmd, uint32_t stream_id,
+			const void *caller)
 {
 	struct apr_hdr hdr;
 	int rc;
@@ -4642,6 +4646,9 @@ static int __q6asm_cmd(struct audio_client *ac, int cmd, uint32_t stream_id)
 	case CMD_CLOSE:
 		pr_debug("%s:CMD_CLOSE\n", __func__);
 		hdr.opcode = ASM_STREAM_CMD_CLOSE;
+		pr_info("q6asm close sync sid=%u stream=%u token=0x%x caller=%pS\n",
+			ac->session, stream_id, hdr.token,
+			caller);
 		state = &ac->cmd_state;
 		break;
 	default:
@@ -4691,12 +4698,12 @@ fail_cmd:
 
 int q6asm_cmd(struct audio_client *ac, int cmd)
 {
-	return __q6asm_cmd(ac, cmd, ac->stream_id);
+	return __q6asm_cmd(ac, cmd, ac->stream_id, __builtin_return_address(0));
 }
 
 int q6asm_stream_cmd(struct audio_client *ac, int cmd, uint32_t stream_id)
 {
-	return __q6asm_cmd(ac, cmd, stream_id);
+	return __q6asm_cmd(ac, cmd, stream_id, __builtin_return_address(0));
 }
 
 static int __q6asm_cmd_nowait(struct audio_client *ac, int cmd,
@@ -4734,6 +4741,9 @@ static int __q6asm_cmd_nowait(struct audio_client *ac, int cmd,
 	case CMD_CLOSE:
 		pr_debug("%s:CMD_CLOSE\n", __func__);
 		hdr.opcode = ASM_STREAM_CMD_CLOSE;
+		pr_info("q6asm close async sid=%u stream=%u token=0x%x caller=%pS\n",
+			ac->session, stream_id, hdr.token,
+			caller);
 		break;
 	default:
 		pr_err("%s:Invalid format[%d]\n", __func__, cmd);
@@ -4758,14 +4768,14 @@ fail_cmd:
 int q6asm_cmd_nowait(struct audio_client *ac, int cmd)
 {
 	pr_debug("%s: stream_id: %d\n", __func__, ac->stream_id);
-	return __q6asm_cmd_nowait(ac, cmd, ac->stream_id);
+	return __q6asm_cmd_nowait(ac, cmd, ac->stream_id, __builtin_return_address(0));
 }
 
 int q6asm_stream_cmd_nowait(struct audio_client *ac, int cmd,
 			    uint32_t stream_id)
 {
 	pr_debug("%s: stream_id: %d\n", __func__, stream_id);
-	return __q6asm_cmd_nowait(ac, cmd, stream_id);
+	return __q6asm_cmd_nowait(ac, cmd, stream_id, __builtin_return_address(0));
 }
 
 int __q6asm_send_meta_data(struct audio_client *ac, uint32_t stream_id,
