@@ -259,11 +259,10 @@ long audio_in_ioctl(struct file *file,
 			rc = -EFAULT;
 			break;
 		}
-		/* Minimum single frame size,
-		   but with in maximum frames number */
+		/* The encoded stream uses FRAME_NUM metadata slots. */
 		if ((cfg.buffer_size < (audio->min_frame_size+ \
 			sizeof(struct meta_out_dsp))) ||
-			(cfg.buffer_count < FRAME_NUM)) {
+			(cfg.buffer_count != FRAME_NUM)) {
 			rc = -EINVAL;
 			break;
 		}
