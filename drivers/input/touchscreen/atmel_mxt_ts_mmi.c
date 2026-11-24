@@ -358,6 +358,10 @@ struct mxt_data {
 #ifdef CONFIG_MMI_HALL_NOTIFICATIONS
 	struct notifier_block folio_notif;
 #endif
+#ifdef CONFIG_WAKE_GESTURES
+	unsigned long wg_irq_window;
+	unsigned int wg_irq_count;
+#endif
 	bool irq_enabled;
 	struct regulator *reg_vdd;
 	struct regulator *reg_avdd;
@@ -1885,10 +1889,38 @@ update_count:
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_WAKE_GESTURES
+#define MXT_WG_IRQ_BURST_LIMIT 32
+
+static bool mxt_wg_irq_storm(struct mxt_data *data)
+{
+	if (!atomic_read(&data->suspended) || !data->mode_is_wakeable)
+		return false;
+
+	if (!data->wg_irq_window ||
+	    time_after(jiffies, data->wg_irq_window + HZ)) {
+		data->wg_irq_window = jiffies;
+		data->wg_irq_count = 0;
+	}
+
+	return ++data->wg_irq_count > MXT_WG_IRQ_BURST_LIMIT;
+}
+#endif
+
 static irqreturn_t mxt_interrupt(int irq, void *dev_id)
 {
 	struct mxt_data *data = dev_id;
 	int state = mxt_get_sensor_state(data);
+
+#ifdef CONFIG_WAKE_GESTURES
+	if (mxt_wg_irq_storm(data)) {
+		dev_err_ratelimited(&data->client->dev,
+			"wake-gesture IRQ storm; disabling IRQ until resume\n");
+		disable_irq_nosync(data->irq);
+		data->irq_enabled = false;
+		return IRQ_HANDLED;
+	}
+#endif
 
 	if (data->in_bootloader  ||
 		(atomic_read(&data->suspended) && !data->mode_is_wakeable) ||
@@ -2568,6 +2600,8 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 #ifdef CONFIG_WAKE_GESTURES
 	case STATE_WG:
 		data->mode_is_wakeable = true;
+		data->wg_irq_window = jiffies;
+		data->wg_irq_count = 0;
 		data->enable_reporting = true;
 		mxt_enable_wakeup_source(data, true);
 		mxt_set_t7_power_cfg(data, MXT_POWER_CFG_WG);
@@ -2579,6 +2613,10 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 	case STATE_ACTIVE:
 		if (!data->in_bootloader)
 			mxt_sensor_state_config(data, ACTIVE_IDX);
+#ifdef CONFIG_WAKE_GESTURES
+		data->wg_irq_window = 0;
+		data->wg_irq_count = 0;
+#endif
 		data->enable_reporting = true;
 
 		if (!data->mode_is_persistent) {
@@ -4516,18 +4554,11 @@ static void mxt_reset_slots(struct mxt_data *data)
 	unsigned int num_mt_slots;
 	int id;
 
-	if (!input_dev) {
+	if (data->buttons_enabled)
 		data->t15_keystatus = 0;
-		return;
-	}
 
-	/* Release held keys before dropping their state on suspend/reset. */
-	for (id = 0; id < data->pdata->t15_num_keys; id++) {
-		if (test_bit(id, &data->t15_keystatus))
-			input_report_key(input_dev,
-					 data->pdata->t15_keymap[id], 0);
-	}
-	data->t15_keystatus = 0;
+	if (!input_dev)
+		return;
 
 	num_mt_slots = data->num_touchids + data->num_stylusids;
 
